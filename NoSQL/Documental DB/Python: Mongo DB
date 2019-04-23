@@ -1,0 +1,380 @@
+#=========================================================
+#=================== AMAZON SCRAPING =====================
+#======================================= Navid ===========
+#======  Raoul ===========================================
+#========================== Master BI&BDA 2018 ===========
+#=========================================================
+
+#========= IMPORT =========
+import os,sys,re,time,request,urllib2,unicodedata,pymongo,pyaudio,pyttsx3
+import speech_recognition as sr
+import numpy as np
+from gtts import gTTS
+from bs4 import BeautifulSoup as soup
+from pymongo import MongoClient
+
+#========= VARIABLES =========
+
+#==== STRING ====
+baseURLList = "https://www.amazon.it/s/ref=nb_sb_noss?__mk_it_IT=%C3%85M%C3%85%C5%BD%C3%95%C3%91&url=search-alias%3Daps&field-keywords="
+baseURLSingleproduct = "https://www.amazon.it/dp/"
+jsonString = ""
+check = ""
+jsonString = ""
+jsonSingleProduct = ""
+result = ""
+jsonStringTot = ""
+speakString = ""
+
+
+#==== ARRAY ====
+product_array_temp = []
+product_array_fin = []
+productArrayListURL = []
+jsonString_arr = []
+
+#==== CONSTANT ====
+t_1 = 1
+t_2 = 2
+t_3 = 3
+t_4 = 4
+t_5 = 5
+
+#========= FUNCTIONS DEFINITION =========
+
+#SAVE IN MONGODB WHIT JSON
+def saveMongoJsonStr(db_name,collection_name,singleJsonStr):
+	print "Correct - Document Insert"
+	db = client[db_name]
+	collection_set = db[collection_name]
+	collection_set.insert(singleJsonStr)
+
+#FUNCTION FOR SPEAK AND ENABLE TEXT TO SPEECH
+def speak(speakString):	
+	engine = pyttsx3.init('nsss') 
+	voices = engine.getProperty('voices')
+	engine.setProperty('voice', voices[0].id)
+	engine.say(speakString)
+	engine.runAndWait()
+	
+#FUNCTION FOR LISTEN AND ENABLE SPEECH TO TEXT
+def listen():
+	r = sr.Recognizer()
+	with sr.Microphone() as source:
+		a = r.listen(source)
+		try:
+			textString = r.recognize_google(a)
+
+		except sr.UnknowValueError:
+			print "Good Not Understand Audio"
+
+		except sr.RequestError as e:
+			print "recog error".format(e)
+
+	return textString
+
+
+#IN THIS FUNCTION I TAKE IN INPUT THE NAME OF THE PRODUCT AND I GIVE IN OUTPUT A LIST OF URLS (THE RESULTS OF THE SCRAPING IN AMAZON RESEARCH FOR PRODUCT NAME)
+def scrapList(product_final):
+	#AMAZON URL NEEDS REPLACING WHITE SPACE WITH + IN THE URL
+	if ' ' in product_final == False:
+		url = baseURLList + product_final
+	else:
+		url = baseURLList + product_final.replace(' ', '+')
+	
+	#CONNECT TO THE AMAZON CUSTUM URL
+	time.sleep(t_2)
+	Client = urllib2.urlopen(url)
+	page_html = Client.read()
+	Client.close()
+	page_soup = soup(page_html, "html.parser")
+
+	#GRAB THE DATA THAT I WANT (IN THIS CASE I WANT ALL <a href> with class a-link-normal)
+	containers = page_soup.findAll("a", {"class":"a-link-normal"}, href=True)
+
+	#NOW I'M TAKING ONLY HREF TAGS, NOT OTHER FIELDS
+	for container in containers:
+		if container.text:
+			product_array_temp.append(container['href'])
+
+	#NOW I CHECK EACH ELEMENTS OF THE LIST AND I CREATE ANOTHER LIST WITH THE URL OF THE PRODUCTS
+	for i in product_array_temp:
+		if (i.startswith("https://")):
+			product_array_fin.append(i)
+			
+	return product_array_fin
+
+#IN THIS FUNCTION I TAKE IN INPUT THE URL OF THE PRODUCT AND I GIVE IN OUTPUT A STRING (SYNTAX IN JSON BUT IT IS A STRING YET)  OF INFORMATION OF THE PRODUCT (SCRAPING IN THE AMAZON WEB PAGE)
+def scrapEachProductsListed(urlSingleProduct,jsonString):
+	time.sleep(t_1)
+	#CONNECT TO THE AMAZON URL SINGLE PRODUCT PAGE
+	Client = urllib2.urlopen(urlSingleProduct)
+	page_html = Client.read()
+	Client.close()
+	page_soup = soup(page_html, "html.parser")
+
+	print "url:    ok"
+	#I WILL TAKE: TITLE (H1, a-size-large)
+	jsonString += "\"title\":\"" + page_soup.select('#title')[0].get_text().strip() + "\","
+	time.sleep(t_1)
+
+	print "title:    ok"
+	#I WILL TAKE: ORIGINAL PRICE (SPAN, a-size-medium a-color-price) 
+	jsonString += "\"originalPrice\":\"" + str(float(page_soup.select('#priceblock_ourprice')[0].get_text().strip().split(' ')[1].replace(',', '.'))) + "\"}"
+	time.sleep(t_1)
+	
+	print "Price:    ok"
+	#I WILL TAKE: ORIGINAL PRICE (SPAN, a-size-medium a-color-price) 
+	#jsonString += "\"discountedPrice\":\"" + str(float(page_soup.select('#priceblock_dealprice')[0].get_text().strip().split(' ')[1].replace(',', '.'))) + "\", "
+	#time.sleep(t_1)
+	
+	#I WILL TAKE: SPEDIZIONE (SPAN > b, a-size-base a-color-base)
+	#jsonString += "\"spedizione\":\"" + 
+	#print "discountedPrice:    ok"
+	#I WILL TAKE: FEEDBACK AVERAGE (SPAN, arp-rating-out-of-text)
+	#jsonString += "\"feedbackAverage\":\"" + str(page_soup.findAll("span", {"class":"arp-rating-out-of-text"}).get_text().strip()) + "\"} " 
+	time.sleep(t_1)
+	
+	#APPEND INTO ARRAY (AT THE END OF THE FOR CYCLE WE HAVE FOREACH OPOSITION A JSON STRING CONTAININT: URL, TITLE, PRICE, PRIME, DELIVERY AND FEEDBACK OF THE PRODUCT)
+	jsonString_arr.append(jsonString)
+	print "*****"
+	print jsonString_arr
+	print "*****"
+	return jsonString_arr
+
+#=========================================================
+#====================== MAIN START =======================
+#=========================================================
+
+#BUILD URL CUSTOM
+print "Please tell to amazon what is the name of the product using your voice: "
+speak("Please tell to amazon what is the name of the product using your voice: ")
+time.sleep(t_1)
+product_final = listen().encode('ascii','ignore')
+#EXTRACT INFORMATION FROM LIST OF ALL PRODUCTS 
+#THE FUNCTION RETURN AN ARRAY WITH THE LIST OF ALL URLS OF THE PRODUCT NAME SEARCHED FOR
+print "I understand " + product_final
+speak("I understand " + product_final)
+speak("I start asking amazon")
+time.sleep(t_1)
+productArrayListURL = scrapList(product_final)
+
+#I TAKE EVERY SINGLE URLs OF THE LIST AND CALL A FUNTION
+for i in productArrayListURL:
+	try:
+		jsonString = ""
+		#jsonString IS AN ARRAY OF JSON AND EACH POSITION OF THE ARRAY CONTAINING: URL, TITLE, PRICE, PRIME, DELIVERY AND FEEDBACK OF ONE PRODUCT
+		jsonString += "{\"url\":\""+ i +"\","
+		result = scrapEachProductsListed(i,jsonString)
+		jsonString_arr.append(result)
+	except:
+		continue
+
+#CONNECT TO MONGO DB
+client = MongoClient('localhost', 27017)
+print "Please tell the name of database in mongo db using your voice:   "
+db_name = listen().encode('ascii','ignore')
+print "Please tell the name of collection in "+ db_name +" in mongo db:   "
+collection_name = listen().encode('ascii','ignore')
+
+for i in jsonString_arr:
+	jsonStringTot = json.loads(i)		
+	saveMongoJsonStr(db_name,collection_name,jsonStringTot)
+
+print " "
+print "*************************************************"
+print "INSERTING ALL DOCUMENT - PROF. COULD YOU CHECK."
+print "*************************************************"
+print " "
+print "."
+time.sleep(t_1)
+print ".."
+time.sleep(t_1)
+print "..."
+time.sleep(t_1)
+print "...."
+time.sleep(t_1)
+print "....."
+time.sleep(t_1)
+print "......"
+time.sleep(t_1)
+print "......."
+time.sleep(t_3)
+print "****************************************************************************"
+print "NOW WE SUPPOSE THAT THE DATA SCRAPING AND DB POPULATING IS ALREADY DONE"
+time.sleep(t_1)
+print "THE PROCEDURE IS TOO LONG SO LET'S US TO INTRODUCE A DB ALREADY POPULATE"
+time.sleep(t_1)
+print "ITS NAME IS  amazon AND THE COLLECTION NAME IS amazon-product"
+time.sleep(t_1)
+print "WHAT QUERY DO YOU WANT TO DO?"
+print "****************************************************************************"
+print " "
+query = listen().encode('ascii','ignore')
+#CHECK QUERY
+
+
+
+
+#OUTPUT
+
+#{
+#    "url": "https://www.amazon.it/Canon-EOS-1300D-Fotocamera-DC/dp/B01J9LR3NM",
+#    "title": "Canon EOS 1300D Kit Fotocamera Reflex Digitale da 18 Megapixel con Obiettivo EF-S DC III 18-55 mm, Wi-Fi, NFC, Nero/Antracite",
+#    "originalPrice": "329.89"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-EOS-1300D-Fotocamera-DC/dp/B01J9LR3NM",
+#    "title": "Canon EOS 1300D Kit Fotocamera Reflex Digitale da 18 Megapixel con Obiettivo EF-S DC III 18-55 mm, Wi-Fi, NFC, Nero/Antracite",
+#    "originalPrice": "329.89"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-EOS-1300D-Fotocamera-DC/dp/B01J9LR3NM#customerReviews",
+#    "title": "Canon EOS 1300D Kit Fotocamera Reflex Digitale da 18 Megapixel con Obiettivo EF-S DC III 18-55 mm, Wi-Fi, NFC, Nero/Antracite",
+#    "originalPrice": "329.89"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Fotocamera-Megapixel-Obiettivo-Antracite/dp/B00TFDDNNO",
+#    "title": "Canon EOS 750D Kit Fotocamera Reflex Digitale da 24 Megapixel con Obiettivo EF-S 18-55 mm IS STM, Nero/Antracite",
+#    "originalPrice": "596.44"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Fotocamera-Megapixel-Obiettivo-Antracite/dp/B00TFDDNNO",
+#    "title": "Canon EOS 750D Kit Fotocamera Reflex Digitale da 24 Megapixel con Obiettivo EF-S 18-55 mm IS STM, Nero/Antracite",
+#    "originalPrice": "596.44"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Fotocamera-Megapixel-Obiettivo-Antracite/dp/B00TFDDNNO#customerReviews",
+#    "title": "Canon EOS 750D Kit Fotocamera Reflex Digitale da 24 Megapixel con Obiettivo EF-S 18-55 mm IS STM, Nero/Antracite",
+#    "originalPrice": "596.44"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-PowerShot-Fotocamera-Megapixel-Antracite/dp/B01A8SG4OO",
+#    "title": "Canon PowerShot SX540 HS Fotocamera Bridge Digitale, 20.3 Megapixel, Nero/Antracite",
+#    "originalPrice": "258.4"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-PowerShot-Fotocamera-Megapixel-Antracite/dp/B01A8SG4OO",
+#    "title": "Canon PowerShot SX540 HS Fotocamera Bridge Digitale, 20.3 Megapixel, Nero/Antracite",
+#    "originalPrice": "258.4"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-PowerShot-Fotocamera-Megapixel-Antracite/dp/B01A8SG4OO#customerReviews",
+#    "title": "Canon PowerShot SX540 HS Fotocamera Bridge Digitale, 20.3 Megapixel, Nero/Antracite",
+#    "originalPrice": "258.4"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Obiettivo-18-135-3-5-5-6-Antracite/dp/B01BWHE8W0",
+#    "title": "Canon Obiettivo con Zoom, EF-S 18-135 mm f/3.5-5.6 IS USM, Nero/Antracite",
+#    "originalPrice": "399.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Obiettivo-18-135-3-5-5-6-Antracite/dp/B01BWHE8W0",
+#    "title": "Canon Obiettivo con Zoom, EF-S 18-135 mm f/3.5-5.6 IS USM, Nero/Antracite",
+#    "originalPrice": "399.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Obiettivo-18-135-3-5-5-6-Antracite/dp/B01BWHE8W0#customerReviews",
+#    "title": "Canon Obiettivo con Zoom, EF-S 18-135 mm f/3.5-5.6 IS USM, Nero/Antracite",
+#    "originalPrice": "399.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-SX620-PowerShot-Fotocamera-Digitale/dp/B01FKQK030",
+#    "title": "Canon SX620 HS PowerShot Fotocamera Digitale Compatta, Nero",
+#    "originalPrice": "179.53"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-SX620-PowerShot-Fotocamera-Digitale/dp/B01FKQK030",
+#    "title": "Canon SX620 HS PowerShot Fotocamera Digitale Compatta, Nero",
+#    "originalPrice": "179.53"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-SX620-PowerShot-Fotocamera-Digitale/dp/B01FKQK030#customerReviews",
+#    "title": "Canon SX620 HS PowerShot Fotocamera Digitale Compatta, Nero",
+#    "originalPrice": "179.53"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Fotocamera-Digitale-Obiettivo-18-55mm/dp/B073D2SMMX",
+#    "title": "Canon EOS 200D Fotocamera Digitale Reflex con Obiettivo EF-S 18-55mm f/4-5.6 IS STM, Nero",
+#    "originalPrice": "499.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Fotocamera-Digitale-Obiettivo-18-55mm/dp/B073D2SMMX",
+#    "title": "Canon EOS 200D Fotocamera Digitale Reflex con Obiettivo EF-S 18-55mm f/4-5.6 IS STM, Nero",
+#    "originalPrice": "499.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Fotocamera-Digitale-Obiettivo-18-55mm/dp/B073D2SMMX#customerReviews",
+#    "title": "Canon EOS 200D Fotocamera Digitale Reflex con Obiettivo EF-S 18-55mm f/4-5.6 IS STM, Nero",
+#    "originalPrice": "499.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Fotocamera-Digitale-Obiettivo-18-55/dp/B06W2L6QHG",
+#    "title": "Canon SLR EOS 77D Fotocamera Digitale, Obiettivo EF-S 18-55 mm f/4-5.6 IS STM, Nero",
+#    "originalPrice": "789.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Fotocamera-Digitale-Obiettivo-18-55/dp/B06W2L6QHG",
+#    "title": "Canon SLR EOS 77D Fotocamera Digitale, Obiettivo EF-S 18-55 mm f/4-5.6 IS STM, Nero",
+#    "originalPrice": "789.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Fotocamera-Digitale-Obiettivo-18-55/dp/B06W2L6QHG#customerReviews",
+#    "title": "Canon SLR EOS 77D Fotocamera Digitale, Obiettivo EF-S 18-55 mm f/4-5.6 IS STM, Nero",
+#    "originalPrice": "789.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-MG3650-Stampante-Multifunzione-Inkjet/dp/B012BJXI7O",
+#    "title": "Canon Pixma MG3650 Stampante Multifunzione Inkjet, 4800 x 1200 dpi, Nero",
+#    "originalPrice": "49.9"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-MG3650-Stampante-Multifunzione-Inkjet/dp/B012BJXI7O",
+#    "title": "Canon Pixma MG3650 Stampante Multifunzione Inkjet, 4800 x 1200 dpi, Nero",
+#    "originalPrice": "49.9"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-MG3650-Stampante-Multifunzione-Inkjet/dp/B012BJXI7O#customerReviews",
+#    "title": "Canon Pixma MG3650 Stampante Multifunzione Inkjet, 4800 x 1200 dpi, Nero",
+#    "originalPrice": "49.9"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-PG-545XL-Cartuccia-dInchiostro-Nero/dp/B00ET7Y5QA",
+#    "title": "Canon PG-545XL Cartuccia d\'Inchiostro, 15 ml, Nero",
+#    "originalPrice": "18.86"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-PG-545XL-Cartuccia-dInchiostro-Nero/dp/B00ET7Y5QA",
+#    "title": "Canon PG-545XL Cartuccia d\'Inchiostro, 15 ml, Nero",
+#    "originalPrice": "18.86"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-PG-545XL-Cartuccia-dInchiostro-Nero/dp/B00ET7Y5QA#customerReviews",
+#    "title": "Canon PG-545XL Cartuccia d\'Inchiostro, 15 ml, Nero",
+#    "originalPrice": "18.86"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-EOS-M6-Fotocamera-Digitale/dp/B06WGRL6DD",
+#    "title": "Canon EOS M6 Fotocamera Digitale, Argento",
+#    "originalPrice": "568.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-EOS-M6-Fotocamera-Digitale/dp/B06WGRL6DD",
+#    "title": "Canon EOS M6 Fotocamera Digitale, Argento",
+#    "originalPrice": "568.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-EOS-M6-Fotocamera-Digitale/dp/B06WGRL6DD#customerReviews",
+#    "title": "Canon EOS M6 Fotocamera Digitale, Argento",
+#    "originalPrice": "568.0"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Powershot-MARK-Fotocamera-digitale/dp/B00KM40PFO",
+#    "title": "Canon Powershot G1X MARK II Fotocamera digitale",
+#    "originalPrice": "640.99"
+#}
+#', [...], u' {
+#    "url": "https://www.amazon.it/Canon-Powershot-MARK-Fotocamera-digitale/dp/B00KM40PFO",
+#    "title": "Canon Powershot G1X MARK II Fotocamera digitale",
+#    "originalPrice": "640.99"
+#}
