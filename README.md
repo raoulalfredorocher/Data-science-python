@@ -5,7 +5,7 @@ This Repository is born for give you some example of script in Python about Data
 
 The Goal is to create script about:
 
-- NoSql Database
+- NoSql Database.
 - Classification Supervised Learning.
 - Regression Supervised Learning.
 - Clustering Unsupervised Learning.
